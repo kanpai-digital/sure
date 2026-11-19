@@ -55,6 +55,7 @@ en:
         no_recent_sync: Sync overdue
         reconsent_required: Re-consent required
         login_required: Login required
+        api_key_needed: API key needed
         login_expires_soon: "Login expires in %{time} (%{at})"
         reconsent_needed:
           one: Re-consent needed in 1 day

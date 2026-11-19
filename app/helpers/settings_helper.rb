@@ -108,6 +108,7 @@ module SettingsHelper
       sync_based_summary(key)
     when "revolut_x"
       return { status: :off } unless @revolut_x_items&.any?
+      return { status: :warn, meta: t("settings.providers.meta.api_key_needed") } unless @revolut_x_items.any?(&:credentials_configured?)
       sync_based_summary(key)
     when "coinspot"
       return { status: :off } unless @coinspot_items&.any?
