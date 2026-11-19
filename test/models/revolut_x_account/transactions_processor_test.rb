@@ -10,7 +10,7 @@ class RevolutXAccount::TransactionsProcessorTest < ActiveSupport::TestCase
   setup do
     @family = families(:dylan_family)
     @family.update!(currency: "USD")
-    @item = @family.revolut_x_items.create!(name: "Revolut X", api_key: "a1" * 32)
+    @item = @family.revolut_x_items.create!(name: "Revolut X", api_key: "a1" * 32, transactions_synced_through: Time.current)
     @revolut_x_account = @item.revolut_x_accounts.create!(
       name: "Revolut X", account_id: "default", account_type: "exchange", currency: "USD", current_balance: 0
     )
@@ -229,6 +229,32 @@ class RevolutXAccount::TransactionsProcessorTest < ActiveSupport::TestCase
       process(*rows)
     end
     assert_equal 5, @account.entries.count
+  end
+
+  test "nothing is written before the first history walk completes" do
+    @item.update!(transactions_synced_through: nil)
+
+    process tx("b1", "buy", source: leg("1000.00", "USD"), destination: leg("0.01", "BTC"))
+
+    assert_equal 0, @account.entries.count
+  end
+
+  test "rows wait until a history walk completes, then a same-day buy is written before its sell" do
+    buy = tx("b1", "buy", source: leg("1000.00", "USD"), destination: leg("0.01", "BTC"))
+    sell = tx("s1", "sell", source: leg("0.01", "BTC"), destination: leg("1100.00", "USD"), created_ms: CREATED_MS + 60_000)
+    interrupted_at = @item.transactions_synced_through + 1.hour
+    @revolut_x_account.update!(raw_transactions_payload: { "transactions" => { "s1" => sell }, "fetched_at" => interrupted_at.iso8601 })
+
+    RevolutXAccount::TransactionsProcessor.new(@revolut_x_account).process
+    assert_equal 0, @account.entries.count
+
+    @item.update!(transactions_synced_through: interrupted_at + 1.hour)
+    @revolut_x_account.reload.update!(raw_transactions_payload: {
+      "transactions" => { "s1" => sell, "b1" => buy }, "fetched_at" => (interrupted_at + 1.hour).iso8601
+    })
+    RevolutXAccount::TransactionsProcessor.new(@revolut_x_account).process
+
+    assert_operator entry("revolut_x_b1").created_at, :<, entry("revolut_x_s1").created_at
   end
 
   test "the spec's paginated example end to end" do

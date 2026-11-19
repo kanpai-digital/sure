@@ -171,7 +171,7 @@ class RevolutXItem::ImporterTest < ActiveSupport::TestCase
   test "a network error mid-walk keeps fetched rows, does not advance, and the balances still import" do
     @provider.stubs(:get_transactions)
       .returns(transactions_page([ row("t1") ]))
-      .then.raises(Net::ReadTimeout)
+      .then.raises(EOFError)
 
     result = nil
     assert_difference -> { DebugLogEntry.where(provider_key: "revolut_x").count }, 1 do

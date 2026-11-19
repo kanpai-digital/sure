@@ -20,7 +20,7 @@ class RevolutXAccount::TransactionsProcessor
   end
 
   def process
-    return unless account
+    return unless account && history_complete?
 
     warm_prices
     rows.each do |row|
@@ -44,6 +44,15 @@ class RevolutXAccount::TransactionsProcessor
 
     def family_currency
       item.family.currency
+    end
+
+    # Writes only after a walk that fetched every window: a cut walk stores
+    # the newer part of a day first, and rows written in a later run get a
+    # later created_at, so a same-day buy would then replay after its sell.
+    def history_complete?
+      synced_through = item.transactions_synced_through
+      fetched_at = revolut_x_account.raw_transactions_payload.to_h["fetched_at"]
+      synced_through.present? && (fetched_at.blank? || Time.iso8601(fetched_at) <= synced_through)
     end
 
     # Oldest first: holdings replay trades by (date, created_at), so a same-day
