@@ -106,6 +106,9 @@ module SettingsHelper
     when "kraken"
       return { status: :off } unless @kraken_items&.any?
       sync_based_summary(key)
+    when "revolut_x"
+      return { status: :off } unless @revolut_x_items&.any?
+      sync_based_summary(key)
     when "coinspot"
       return { status: :off } unless @coinspot_items&.any?
       sync_based_summary(key)
