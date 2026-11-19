@@ -1,0 +1,1 @@
+PR screenshots/GIFs uploaded by agents. Not code; never merge.
