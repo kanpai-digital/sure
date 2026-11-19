@@ -61,15 +61,20 @@ class RevolutXAccount::ProcessorTest < ActiveSupport::TestCase
     assert_equal account.cash_balance, account.balance
   end
 
-  test "a held coin that loses its price is reported, not zeroed" do
+  test "a held coin that loses its price is reported and no longer held" do
     account = import_and_link
     RevolutXAccount::Processor.new(@revolut_x_account).process
 
     @tickers["data"].reject! { |ticker| ticker["symbol"].start_with?("ETH/") }
     reimport(payload("balances"))
-    RevolutXAccount::Processor.new(@revolut_x_account).process
+    assert_difference -> { DebugLogEntry.where(provider_key: "revolut_x").count }, 1 do
+      RevolutXAccount::Processor.new(@revolut_x_account).process
+    end
 
-    assert_equal 42, account.reload.current_holdings.joins(:security).find_by(securities: { ticker: "CRYPTO:ETH" }).qty
+    assert_match "ETH", DebugLogEntry.where(provider_key: "revolut_x").last.message
+    account.reload
+    assert_equal %w[CRYPTO:BTC], account.current_holdings.map { |holding| holding.security.ticker }
+    assert_equal account.current_holdings.sum(&:amount) + account.cash_balance, account.balance
   end
 
   test "reports fiat cash that has no USD rate" do

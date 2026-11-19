@@ -8,8 +8,8 @@ class RevolutXAccount::HoldingsProcessor
   def process
     return unless account&.accountable_type == "Crypto"
 
-    crypto_assets.each { |asset| process_asset(asset) }
-    zero_absent_holdings
+    imported_tickers = crypto_assets.filter_map { |asset| process_asset(asset)&.ticker }
+    zero_absent_holdings(imported_tickers)
   end
 
   private
@@ -29,13 +29,17 @@ class RevolutXAccount::HoldingsProcessor
     end
 
     # Staked and reserved units are still owned, so the holding is the total.
+    # Returns the security when a holding was written, else nil.
     def process_asset(asset)
       symbol = asset["symbol"]
       quantity = asset["total"].to_d
       return if quantity.zero?
 
       security = Onchain::SecurityResolver.resolve(symbol: symbol, name: asset["name"]) if asset["price_usd"].present?
-      return revolut_x_account.report_unvalued_asset(symbol, source: self.class.name) unless security
+      unless security
+        revolut_x_account.report_unvalued_asset(symbol, source: self.class.name)
+        return
+      end
 
       price = Money.new(asset["price_usd"].to_d, "USD").exchange_to(currency).amount
 
@@ -52,22 +56,19 @@ class RevolutXAccount::HoldingsProcessor
         source: "revolut_x",
         delete_future_holdings: false
       )
+      security
     end
 
-    # A coin that left the account has no row in the payload, so without a
-    # today-dated zero its last provider snapshot would keep counting as held.
-    # Coins still in the payload are not zeroed, priced or not: they are owned.
-    def zero_absent_holdings
+    # Any coin without a holding written this run (gone from the payload, or
+    # held but unpriced) gets a today-dated zero, so its last provider snapshot
+    # stops counting while the balance values it at 0.
+    def zero_absent_holdings(present_tickers)
       # No assets array means no snapshot, not an empty account.
       return unless revolut_x_account.raw_payload.to_h["assets"].is_a?(Array)
 
       provider_link = revolut_x_account.account_provider
       return unless provider_link
 
-      present_tickers = crypto_assets.filter_map do |asset|
-        ticker_symbol = Onchain::SecurityResolver.new(symbol: asset["symbol"]).ticker_symbol
-        "#{Onchain::SecurityResolver::TICKER_PREFIX}#{ticker_symbol}" if ticker_symbol
-      end
       held_security_ids = account.holdings.where(account_provider_id: provider_link.id)
         .distinct.pluck(Arel.sql("COALESCE(provider_security_id, security_id)"))
 
