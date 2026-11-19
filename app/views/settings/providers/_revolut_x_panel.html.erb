@@ -61,6 +61,7 @@
                   text: t("settings.providers.revolut_x_panel.setup_accounts"),
                   icon: "settings",
                   variant: "secondary",
+                  size: :sm,
                   href: setup_accounts_revolut_x_item_path(item),
                   frame: :modal
                 ) %>
@@ -82,7 +83,7 @@
               <p class="text-xs text-secondary"><%= t("settings.providers.revolut_x_panel.public_key.description") %></p>
               <div class="bg-container rounded-lg p-3 border border-primary" data-controller="clipboard" data-clipboard-copied-text-value="<%= t("settings.providers.revolut_x_panel.public_key.copied") %>">
                 <div class="flex flex-col items-start gap-2">
-                  <code class="font-mono text-xs text-primary break-all whitespace-pre-wrap" data-clipboard-target="source"><%= item.public_key_pem %></code>
+                  <code class="font-mono text-xs text-primary break-all whitespace-pre-wrap" data-clipboard-target="source"><%= item.public_key_pem.strip %></code>
                   <%= render DS::Button.new(
                     text: t("settings.providers.revolut_x_panel.public_key.copy"),
                     variant: "ghost",

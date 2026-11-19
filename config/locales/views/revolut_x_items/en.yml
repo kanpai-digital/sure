@@ -8,7 +8,7 @@ en:
       description: "Link to %{name}"
     create:
       default_name: Revolut X
-      success: Revolut X connection created. Register its public key in Revolut X, then paste the API key into the connection.
+      success: Revolut X connection created. Next, register its public key.
     update:
       success: Successfully updated Revolut X connection.
     destroy:

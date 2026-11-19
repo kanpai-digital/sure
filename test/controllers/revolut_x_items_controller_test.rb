@@ -65,7 +65,7 @@ class RevolutXItemsControllerTest < ActionDispatch::IntegrationTest
 
     assert_turbo_stream status: :unprocessable_entity, action: "replace", target: "revolut_x-providers-panel"
     assert_includes response.body, "#{I18n.t("ds.alert.variants.error")}:"
-    assert_includes response.body, "Private key is invalid"
+    assert_includes response.body, "Private key must be an Ed25519 private key in PEM format"
   end
 
   test "pasting a valid API key configures the connection and queues one sync" do
@@ -89,7 +89,7 @@ class RevolutXItemsControllerTest < ActionDispatch::IntegrationTest
 
     assert_turbo_stream status: :unprocessable_entity, action: "replace", target: "revolut_x-providers-panel"
     assert_includes response.body, "#{I18n.t("ds.alert.variants.error")}:"
-    assert_includes response.body, ERB::Util.html_escape("Api key is invalid")
+    assert_includes response.body, "API key must be the 64-character key Revolut X shows"
     @awaiting_item.reload
     assert_nil @awaiting_item.api_key
     assert_equal "Revolut X Bot", @awaiting_item.name
