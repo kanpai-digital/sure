@@ -32,6 +32,18 @@ class RevolutXItemTest < ActiveSupport::TestCase
     assert_not garbage.valid?
   end
 
+  test "rejects an Ed25519 public key, which cannot sign" do
+    public_pem = OpenSSL::PKey.generate_key("ED25519").public_to_pem
+    item = @family.revolut_x_items.new(name: "Revolut X", private_key: public_pem)
+
+    assert_not item.valid?
+    assert item.errors.added?(:private_key, :invalid)
+
+    stored = revolut_x_items(:one)
+    stored.update_columns(private_key: public_pem)
+    assert_not stored.reload.credentials_configured?
+  end
+
   test "an API key must be 64 alphanumerics" do
     item = revolut_x_items(:awaiting_api_key)
 

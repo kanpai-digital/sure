@@ -18,4 +18,18 @@ class RevolutXAccount < ApplicationRecord
   def current_account
     account
   end
+
+  # An asset left out of the account's value because nothing prices it.
+  def report_unvalued_asset(symbol, source:)
+    DebugLogEntry.capture(
+      category: "provider_sync_error",
+      level: "warn",
+      message: "Revolut X asset #{symbol} not valued: no price or usable ticker",
+      source: source,
+      provider_key: "revolut_x",
+      family: revolut_x_item.family,
+      account_provider: account_provider,
+      metadata: { revolut_x_item_id: revolut_x_item_id, symbol: symbol }
+    )
+  end
 end

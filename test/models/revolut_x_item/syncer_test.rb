@@ -46,8 +46,7 @@ class RevolutXItem::SyncerTest < ActiveSupport::TestCase
   end
 
   test "processes and schedules linked accounts" do
-    revolut_x_account = @item.revolut_x_accounts.create!(name: "Revolut X", account_id: "default", account_type: "exchange", currency: "USD")
-    AccountProvider.create!(account: accounts(:crypto), provider: revolut_x_account)
+    link_account
     sync = @item.syncs.create!
     @item.expects(:import_latest_revolut_x_data).returns(success: true)
     @item.expects(:process_accounts).returns([])
@@ -57,4 +56,38 @@ class RevolutXItem::SyncerTest < ActiveSupport::TestCase
 
     assert_not @item.reload.pending_account_setup?
   end
+
+  test "an account that fails to process fails the sync and is not scheduled" do
+    link_account
+    sync = @item.syncs.create!
+    @item.expects(:import_latest_revolut_x_data).returns(success: true)
+    @item.expects(:process_accounts).returns([ { revolut_x_account_id: "x", success: false, error: "no FX rate" } ])
+    @item.expects(:schedule_account_syncs).never
+
+    assert_difference -> { DebugLogEntry.where(provider_key: "revolut_x", level: "error").count }, 1 do
+      assert_raises(RuntimeError) { RevolutXItem::Syncer.new(@item).perform_sync(sync) }
+    end
+    assert sync.reload.failed?
+    assert_equal "1 Revolut X account failed to sync", sync.error
+  end
+
+  test "an account sync that fails to schedule fails the sync" do
+    link_account
+    sync = @item.syncs.create!
+    @item.expects(:import_latest_revolut_x_data).returns(success: true)
+    @item.expects(:process_accounts).returns([])
+    @item.expects(:schedule_account_syncs).returns([ { account_id: "x", success: false, error: "boom" } ])
+
+    assert_difference -> { DebugLogEntry.where(provider_key: "revolut_x", level: "error").count }, 1 do
+      assert_raises(RuntimeError) { RevolutXItem::Syncer.new(@item).perform_sync(sync) }
+    end
+    assert sync.reload.failed?
+  end
+
+  private
+
+    def link_account
+      revolut_x_account = @item.revolut_x_accounts.create!(name: "Revolut X", account_id: "default", account_type: "exchange", currency: "USD")
+      AccountProvider.create!(account: accounts(:crypto), provider: revolut_x_account)
+    end
 end

@@ -18,4 +18,7 @@ en:
         one: "%{count} account needs setup"
         other: "%{count} accounts need setup"
       processing_accounts: Processing account data...
+      processing_failed:
+        one: "%{count} Revolut X account failed to sync"
+        other: "%{count} Revolut X accounts failed to sync"
       calculating_balances: Calculating balances...

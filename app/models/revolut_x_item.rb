@@ -140,6 +140,7 @@ class RevolutXItem < ApplicationRecord
       return nil if private_key.blank?
 
       key = OpenSSL::PKey.read(private_key)
+      key.private_to_der # raises for a public-only key, which cannot sign
       key if key.oid == "ED25519"
     rescue OpenSSL::PKey::PKeyError
       nil

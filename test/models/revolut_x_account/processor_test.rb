@@ -39,14 +39,65 @@ class RevolutXAccount::ProcessorTest < ActiveSupport::TestCase
     assert_match "DOGE", DebugLogEntry.where(provider_key: "revolut_x").last.message
   end
 
+  test "a coin gone from a later same-day sync is no longer held" do
+    account = import_and_link
+    RevolutXAccount::Processor.new(@revolut_x_account).process
+
+    reimport(payload("balances").reject { |balance| balance["currency"] == "ETH" })
+    RevolutXAccount::Processor.new(@revolut_x_account).process
+
+    assert_equal %w[CRYPTO:BTC], account.reload.current_holdings.map { |holding| holding.security.ticker }
+  end
+
+  test "selling all crypto leaves no current holdings" do
+    account = import_and_link
+    RevolutXAccount::Processor.new(@revolut_x_account).process
+    account.holdings.update_all(date: 1.day.ago.to_date)
+
+    reimport(payload("balances").select { |balance| balance["currency"] == "USD" })
+    RevolutXAccount::Processor.new(@revolut_x_account).process
+
+    assert_empty account.reload.current_holdings
+    assert_equal account.cash_balance, account.balance
+  end
+
+  test "a held coin that loses its price is reported, not zeroed" do
+    account = import_and_link
+    RevolutXAccount::Processor.new(@revolut_x_account).process
+
+    @tickers["data"].reject! { |ticker| ticker["symbol"].start_with?("ETH/") }
+    reimport(payload("balances"))
+    RevolutXAccount::Processor.new(@revolut_x_account).process
+
+    assert_equal 42, account.reload.current_holdings.joins(:security).find_by(securities: { ticker: "CRYPTO:ETH" }).qty
+  end
+
+  test "reports fiat cash that has no USD rate" do
+    @family.update!(currency: "EUR")
+    ExchangeRate.create!(from_currency: "USD", to_currency: "EUR", date: Date.current, rate: 0.9)
+    import_and_link(extra_balances: [ { "currency" => "GBP", "available" => "100", "reserved" => "0", "total" => "100" } ])
+
+    assert_difference -> { DebugLogEntry.where(provider_key: "revolut_x").count }, 1 do
+      RevolutXAccount::Processor.new(@revolut_x_account).process
+    end
+    assert_match "GBP", DebugLogEntry.where(provider_key: "revolut_x").last.message
+  end
+
   private
 
+    def reimport(balances)
+      @provider.stubs(:get_balances).returns(balances)
+      @provider.stubs(:get_tickers).returns(@tickers)
+      RevolutXItem::Importer.new(@item, revolut_x_provider: @provider).import
+      @revolut_x_account.reload
+    end
+
     def import_and_link(extra_balances: [])
-      provider = mock
+      @provider = provider = mock
       provider.stubs(:get_balances).returns(payload("balances") + extra_balances)
       provider.stubs(:get_sub_accounts).returns(payload("sub_accounts"))
       provider.stubs(:get_currencies).returns(payload("currencies"))
-      tickers = payload("tickers")
+      @tickers = tickers = payload("tickers")
       tickers["data"] << { "symbol" => "ETH/USD", "mid" => "3000.00" }
       provider.stubs(:get_tickers).returns(tickers)
       RevolutXItem::Importer.new(@item, revolut_x_provider: provider).import
