@@ -126,6 +126,37 @@ class RevolutXAccount::TransactionsProcessorTest < ActiveSupport::TestCase
     assert_equal true, entry("revolut_x_p2").entryable.extra.dig("revolut_x", "price_missing")
   end
 
+  test "an amount-0 Trade converts its price at that day's rate" do
+    @family.update!(currency: "EUR")
+    Onchain::SecurityResolver.resolve(symbol: "ETH").prices.create!(date: DATE, price: 2000, currency: "USD")
+    ExchangeRate.create!(from_currency: "USD", to_currency: "EUR", date: DATE, rate: 0.9)
+    ExchangeRate.create!(from_currency: "USD", to_currency: "EUR", date: Date.current, rate: 0.5)
+
+    process tx("p3", "reward", destination: leg("1", "ETH"))
+
+    assert_equal 1800, entry("revolut_x_p3").entryable.price
+  end
+
+  test "rows are written oldest first, whatever order they were stored in" do
+    process(
+      tx("t_sell", "sell", source: leg("0.01", "BTC"), destination: leg("1100", "USD"), created_ms: CREATED_MS + 3_600_000),
+      tx("t_buy", "buy", source: leg("1000", "USD"), destination: leg("0.01", "BTC"))
+    )
+
+    assert_operator entry("revolut_x_t_buy").created_at, :<, entry("revolut_x_t_sell").created_at
+  end
+
+  test "a completed row never takes over another row's pending entry of the same amount" do
+    pending = tx("a1", "send", status: "pending", source: leg("300", "USD"))
+    process pending
+
+    process pending, tx("a2", "send", source: leg("300", "USD"), created_ms: CREATED_MS + 86_400_000)
+
+    assert entry("revolut_x_a1").entryable.pending?
+    assert_not entry("revolut_x_a2").entryable.pending?
+    assert_equal 2, @account.entries.count
+  end
+
   test "stake and un_stake rows create nothing and leave balance and holdings alone" do
     @account.update!(balance: 5000)
     btc = Onchain::SecurityResolver.resolve(symbol: "BTC")
@@ -227,8 +258,8 @@ class RevolutXAccount::TransactionsProcessorTest < ActiveSupport::TestCase
       @revolut_x_account.update!(raw_transactions_payload: { "transactions" => rows.index_by { |row| row["id"] } })
     end
 
-    def tx(id, type, status: "completed", source: nil, destination: nil)
-      { "id" => id, "status" => status, "type" => type, "source" => source, "destination" => destination, "created_date" => CREATED_MS }.compact
+    def tx(id, type, status: "completed", source: nil, destination: nil, created_ms: CREATED_MS)
+      { "id" => id, "status" => status, "type" => type, "source" => source, "destination" => destination, "created_date" => created_ms }.compact
     end
 
     def leg(amount, currency, account_type = "revolut_x")

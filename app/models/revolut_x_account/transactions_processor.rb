@@ -46,8 +46,11 @@ class RevolutXAccount::TransactionsProcessor
       item.family.currency
     end
 
+    # Oldest first: holdings replay trades by (date, created_at), so a same-day
+    # buy must be written before the sell it funds.
     def rows
       revolut_x_account.raw_transactions_payload.to_h.fetch("transactions", {}).values
+        .sort_by { |row| [ row["created_date"].to_i, row["id"].to_s ] }
     end
 
     # stake and un_stake map to nothing: the balance total already includes
@@ -165,7 +168,9 @@ class RevolutXAccount::TransactionsProcessor
         kind: kind,
         investment_activity_label: label,
         extra: extra(row),
-        replace_extra_namespaces: [ SOURCE ]
+        replace_extra_namespaces: [ SOURCE ],
+        # Each row has its own id; an amount/date match would let one row claim another's entry.
+        allow_heuristic_matching: false
       )
     end
 
@@ -207,7 +212,7 @@ class RevolutXAccount::TransactionsProcessor
       price = security.prices.find_by(date: date)
       return nil if price&.price.blank?
 
-      Money.new(price.price, price.currency).exchange_to(family_currency).amount
+      Money.new(price.price, price.currency).exchange_to(family_currency, date: date).amount
     rescue Money::ConversionError
       nil
     end

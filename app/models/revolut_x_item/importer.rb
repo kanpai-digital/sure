@@ -65,7 +65,8 @@ class RevolutXItem::Importer
           window_end = window_start
         end
         true
-      rescue Provider::RevolutX::RateLimitError, Provider::RevolutX::ApiError, RepeatedCursorError => e
+      rescue Provider::RevolutX::RateLimitError, Provider::RevolutX::ApiError, RepeatedCursorError,
+             Timeout::Error, SocketError, OpenSSL::SSL::SSLError, SystemCallError => e
         DebugLogEntry.capture(
           category: "provider_sync_error",
           level: "warn",

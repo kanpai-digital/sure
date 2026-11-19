@@ -168,6 +168,21 @@ class RevolutXItem::ImporterTest < ActiveSupport::TestCase
     assert_equal %w[t1], stored_transactions.keys
   end
 
+  test "a network error mid-walk keeps fetched rows, does not advance, and the balances still import" do
+    @provider.stubs(:get_transactions)
+      .returns(transactions_page([ row("t1") ]))
+      .then.raises(Net::ReadTimeout)
+
+    result = nil
+    assert_difference -> { DebugLogEntry.where(provider_key: "revolut_x").count }, 1 do
+      result = travel_to(Time.at(NOW_MS / 1000).utc) { import }
+    end
+
+    assert result[:success]
+    assert_nil @item.reload.transactions_synced_through
+    assert_equal %w[t1], stored_transactions.keys
+  end
+
   test "rows merge by id, a newer copy replacing the stored one" do
     @provider.stubs(:get_transactions).returns(transactions_page([ row("t1", status: "pending"), row("t2") ]))
     import
